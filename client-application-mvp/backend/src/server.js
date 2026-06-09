@@ -27,12 +27,18 @@ app.use(cors({
 
 app.use(express.json({ limit: '1mb' }));
 
+app.get('/', (_req, res) => {
+  res.status(200).send('Tax MVP API Running');
+});
+
 app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     service: 'tax-mvp-api'
   });
 });
+
+console.log('Health route registered');
 
 app.use('/api/applications', applicationRoutes);
 
@@ -48,6 +54,6 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`API running on port ${PORT}`);
 });
