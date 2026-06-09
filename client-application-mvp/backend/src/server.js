@@ -1,0 +1,56 @@
+const cors = require('cors');
+const dotenv = require('dotenv');
+const express = require('express');
+const pool = require('./config/db');
+const applicationRoutes = require('./routes/applicationRoutes');
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+const allowedOrigins = [
+  process.env.USER_PANEL_URL,
+  process.env.ADMIN_PANEL_URL,
+  'http://localhost:5173',
+  'http://localhost:5174'
+].filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
+
+app.use(express.json({ limit: '1mb' }));
+
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    return res.json({ success: true, status: 'ok', database: 'connected' });
+  } catch (_error) {
+    return res.status(500).json({ success: false, status: 'error', database: 'disconnected' });
+  }
+});
+
+app.use('/api/applications', applicationRoutes);
+
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: 'Route not found' });
+});
+
+app.use((error, _req, res, _next) => {
+  console.error(error);
+  res.status(error.status || 500).json({
+    success: false,
+    message: error.message || 'Internal server error'
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`API running on port ${PORT}`);
+});
