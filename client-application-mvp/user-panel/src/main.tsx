@@ -222,7 +222,7 @@ function SignupForm({ onSuccess, onSwitchToSignin }: {
 // ─── Welcome ─────────────────────────────────────────────────────────────────
 
 function WelcomePage({ user, onGoToDashboard, onSignOut }: {
-  user: User;
+  user: User | undefined;
   onGoToDashboard: () => void;
   onSignOut: () => void;
 }) {
@@ -230,9 +230,9 @@ function WelcomePage({ user, onGoToDashboard, onSignOut }: {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200 text-center">
         <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 text-2xl font-bold mb-5">
-          {user.fullName.charAt(0).toUpperCase()}
+          {user?.fullName?.charAt(0)?.toUpperCase() ?? 'A'}
         </div>
-        <h1 className="text-2xl font-semibold text-gray-900">Welcome back, {user.fullName}!</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Welcome back, {user?.fullName ?? 'User'}!</h1>
         <p className="mt-3 text-sm text-gray-500">Your tax application dashboard is ready. Submit or track your business applications.</p>
         <button
           onClick={onGoToDashboard}
