@@ -2,6 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
+type View = 'signin' | 'welcome' | 'dashboard';
+
+type AdminUser = {
+  id: number;
+  fullName: string;
+  email: string;
+  role: string;
+};
+
 type Application = {
   id: number;
   fullName: string;
@@ -19,7 +28,165 @@ type Application = {
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+const getStoredAdminAuth = (): { token: string; user: AdminUser } | null => {
+  try {
+    const token = localStorage.getItem('adminToken');
+    const raw = localStorage.getItem('adminUser');
+    if (!token || !raw) return null;
+    const user: AdminUser = JSON.parse(raw);
+    if (user.role !== 'admin') return null;
+    return { token, user };
+  } catch {
+    return null;
+  }
+};
+
+const saveAdminAuth = (token: string, user: AdminUser) => {
+  localStorage.setItem('adminToken', token);
+  localStorage.setItem('adminUser', JSON.stringify(user));
+};
+
+const clearAdminAuth = () => {
+  localStorage.removeItem('adminToken');
+  localStorage.removeItem('adminUser');
+};
+
+// ─── Root App ────────────────────────────────────────────────────────────────
+
 function App() {
+  const [view, setView] = useState<View>('signin');
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [token, setToken] = useState<string>('');
+
+  useEffect(() => {
+    const stored = getStoredAdminAuth();
+    if (stored) {
+      setToken(stored.token);
+      setAdminUser(stored.user);
+      setView('welcome');
+    }
+  }, []);
+
+  const handleSignIn = (newToken: string, user: AdminUser) => {
+    saveAdminAuth(newToken, user);
+    setToken(newToken);
+    setAdminUser(user);
+    setView('welcome');
+  };
+
+  const handleSignOut = () => {
+    clearAdminAuth();
+    setToken('');
+    setAdminUser(null);
+    setView('signin');
+  };
+
+  if (view === 'signin') {
+    return <AdminSigninForm onSuccess={handleSignIn} />;
+  }
+  if (view === 'welcome' && adminUser) {
+    return <AdminWelcomePage user={adminUser} onGoToDashboard={() => setView('dashboard')} onSignOut={handleSignOut} />;
+  }
+  if (view === 'dashboard' && adminUser) {
+    return <AdminDashboard token={token} adminUser={adminUser} onSignOut={handleSignOut} />;
+  }
+  return null;
+}
+
+// ─── Admin Sign In ────────────────────────────────────────────────────────────
+
+function AdminSigninForm({ onSuccess }: {
+  onSuccess: (token: string, user: AdminUser) => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/auth/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.message || 'Sign in failed');
+      if (payload.user?.role !== 'admin') {
+        throw new Error('Not authorized as admin');
+      }
+      onSuccess(payload.token, payload.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
+        <div className="mb-1 inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">Admin access</div>
+        <h1 className="mt-3 text-2xl font-semibold text-gray-900">Sign in to Admin Panel</h1>
+        <p className="mt-2 text-sm text-gray-500">Only authorised admin accounts can access this panel.</p>
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <AdminInput label="Email address" type="email" value={email} onChange={setEmail} required />
+          <AdminInput label="Password" type="password" value={password} onChange={setPassword} required />
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed transition"
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Welcome ────────────────────────────────────────────────────────────
+
+function AdminWelcomePage({ user, onGoToDashboard, onSignOut }: {
+  user: AdminUser;
+  onGoToDashboard: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200 text-center">
+        <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 text-2xl font-bold mb-5">
+          {user.fullName.charAt(0).toUpperCase()}
+        </div>
+        <h1 className="text-2xl font-semibold text-gray-900">Welcome back, {user.fullName}</h1>
+        <p className="mt-3 text-sm text-gray-500">You have access to the admin dashboard. View and manage all submitted applications.</p>
+        <button
+          onClick={onGoToDashboard}
+          className="mt-7 w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-500 transition"
+        >
+          Go to Dashboard →
+        </button>
+        <button onClick={onSignOut} className="mt-4 text-sm text-gray-400 hover:text-gray-600 transition">
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Dashboard (existing UI, unchanged) ────────────────────────────────
+
+function AdminDashboard({ token, adminUser, onSignOut }: {
+  token: string;
+  adminUser: AdminUser;
+  onSignOut: () => void;
+}) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -29,11 +196,13 @@ function App() {
   const [selected, setSelected] = useState<Application | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const authHeaders = { Authorization: `Bearer ${token}` };
+
   const fetchApplications = async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${apiUrl}/api/applications`);
+      const response = await fetch(`${apiUrl}/api/applications`, { headers: authHeaders });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Unable to fetch applications');
       setApplications(payload.data || []);
@@ -46,6 +215,7 @@ function App() {
 
   useEffect(() => {
     fetchApplications();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -74,9 +244,8 @@ function App() {
   const deleteApplication = async (id: number) => {
     const confirmed = window.confirm('Delete this application?');
     if (!confirmed) return;
-
     try {
-      const response = await fetch(`${apiUrl}/api/applications/${id}`, { method: 'DELETE' });
+      const response = await fetch(`${apiUrl}/api/applications/${id}`, { method: 'DELETE', headers: authHeaders });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Unable to delete application');
       setApplications((current) => current.filter((app) => app.id !== id));
@@ -95,14 +264,19 @@ function App() {
           <div className="px-4 py-3">Submissions</div>
           <div className="px-4 py-3">Reports</div>
         </nav>
+        <div className="absolute bottom-6 left-6 right-6">
+          <div className="text-xs text-zinc-500 truncate">{adminUser.email}</div>
+          <button onClick={onSignOut} className="mt-2 text-sm text-zinc-400 hover:text-white transition">Sign out</button>
+        </div>
       </aside>
 
       <header className="sticky top-0 z-20 border-b border-white/10 bg-black/95 px-5 py-4 lg:hidden">
         <div className="flex items-center justify-between">
           <span className="text-lg font-semibold">Applications</span>
-          <button className="rounded-md border border-white/10 px-3 py-2 text-sm" onClick={() => setMenuOpen((value) => !value)}>
-            Menu
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={onSignOut} className="text-sm text-zinc-400">Sign out</button>
+            <button className="rounded-md border border-white/10 px-3 py-2 text-sm" onClick={() => setMenuOpen((v) => !v)}>Menu</button>
+          </div>
         </div>
         {menuOpen && <div className="mt-4 rounded-md bg-red-600 px-4 py-3 text-sm">Dashboard</div>}
       </header>
@@ -161,6 +335,29 @@ function App() {
   );
 }
 
+// ─── Shared sub-components ────────────────────────────────────────────────────
+
+function AdminInput({ label, value, onChange, type = 'text', required = false }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block text-sm font-medium text-gray-700">
+      {label}
+      <input
+        className="mt-1.5 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+      />
+    </label>
+  );
+}
+
 function ApplicationsList({ applications, loading, onView, onDelete }: {
   applications: Application[];
   loading: boolean;
@@ -170,7 +367,6 @@ function ApplicationsList({ applications, loading, onView, onDelete }: {
   if (loading) {
     return <div className="mt-8 rounded-lg border border-white/10 bg-zinc-950 p-8 text-center text-zinc-300">Loading applications...</div>;
   }
-
   if (applications.length === 0) {
     return <div className="mt-8 rounded-lg border border-white/10 bg-zinc-950 p-10 text-center text-zinc-300">No applications found.</div>;
   }
